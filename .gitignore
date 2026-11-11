@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Generated print data and diagnostics
+*.gcode
+*.gcode.part
+*.log
+*.3mf
+*.stl
+*.obj
+*.zip
+
+# Local profiles, experiments and build directories
+profile/
+profiles/
+work/
+tmp/
+research/
+build/
+dist/
+.cura-reslice-*/
+
+# Local OS files
+.DS_Store
+Thumbs.db
