@@ -1,17 +1,15 @@
 @echo off
 setlocal
+
+::python "%~dp0cura_reslice.py" --list-printers
+python "%~dp0cura_reslice.py" --help
+
+:start
+
 if "%~1"=="" (
-    echo Drag 3MF files or a folder onto this BAT file.
-    pause
-    exit /b 2
+    exit /b 0
 )
-where py >nul 2>nul
-if errorlevel 1 (
-    python "%~dp0cura_reslice.py" %*
-) else (
-    py -3 "%~dp0cura_reslice.py" %*
-)
-set "reslice_exit_code=%errorlevel%"
-echo.
-pause
-exit /b %reslice_exit_code%
+python "%~dp0cura_reslice.py" %1 --recursive --overwrite --printer "Anycubic i3 Mega S/Pro ORG"
+
+shift
+goto start
