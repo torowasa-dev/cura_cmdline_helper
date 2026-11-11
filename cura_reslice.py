@@ -24,7 +24,7 @@ import time
 import uuid
 import zipfile
 
-SCRIPT_VERSION = "1.1.0"
+SCRIPT_VERSION = "1.1.1"
 CURA_VERSION = "5.12.0"
 PROFILE_VERSION = "5.12"
 BRIDGE_NAME = "HeadlessResliceBridge"
@@ -505,6 +505,7 @@ def run_cura_job(job: dict, work: Path, log_path: Path, cura: Path,
 
 
 def list_printers(cura: Path, sources: tuple[Path | None, Path | None], args: argparse.Namespace) -> int:
+    emit("INFO: Curaを起動して設定を読み込むため、プリンタ一覧の表示まで時間がかかります。しばらくお待ちください。")
     work = Path(tempfile.mkdtemp(prefix="cura-printers-"))
     completed = False
     try:
