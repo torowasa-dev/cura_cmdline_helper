@@ -2,7 +2,7 @@
 
 UltiMaker Cura **5.12.0**で保存したプロジェクト3MFを、画面を開かずに再スライスするPythonツールです。生成したG-codeを、元3MFと同じフォルダへ保存します。
 
-**現在のバージョン: 1.1.1**
+**現在のバージョン: 1.2.0**
 
 ## 必要なもの
 
@@ -106,3 +106,16 @@ python cura_reslice.py --help
 `--check`はソースと配布版の一致を確認し、不一致なら終了コード1を返します。
 
 このツールはCuraの内部APIを利用する自作ツールであり、UltiMaker公式のCLI製品ではありません。
+
+
+## 終了G-code直前への任意G-code挿入（v1.2.0）
+
+```powershell
+py -3 .\cura_reslice.py "D:\3D\grip.3mf" --insert-before-end ".\UNLOAD50.gcode" --overwrite
+```
+
+`--insert-before-end "GCODE"` でUTF-8/ASCIIのG-codeファイルを指定すると、CuraEngineが生成した最終の終了G-codeブロックの先頭に内容を挿入してから、Cura標準の後処理・GCodeWriterへ渡します。
+
+同梱の `UNLOAD50.gcode` は220℃へ温度を合わせ、E軸を相対モードにして50mm引き戻し、ホットエンド停止・Eモーター解放まで行います。修正版 `reslice_drag_drop.bat` はこのファイルを自動指定します。
+
+挿入ファイルが存在しない、空、1MiB超、NUL文字を含む、UTF-8/ASCIIで読めない場合はエラー停止し、既存G-codeは置換しません。
