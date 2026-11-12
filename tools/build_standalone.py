@@ -34,14 +34,14 @@ def build() -> bytes:
         raise ValueError("The template must have exactly one empty BRIDGE_ZIP_B64 assignment.")
 
     archive = io.BytesIO()
-    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as output:
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED, compresslevel=6) as output:
         for name in MEMBERS:
             member = zipfile.ZipInfo(name, ZIP_TIMESTAMP)
-            member.compress_type = zipfile.ZIP_DEFLATED
+            member.compress_type = zipfile.ZIP_STORED
             member.create_system = 3
             member.external_attr = 0o644 << 16
             output.writestr(member, (BRIDGE / name).read_bytes(),
-                            compress_type=zipfile.ZIP_DEFLATED, compresslevel=6)
+                            compress_type=zipfile.ZIP_STORED)
 
     encoded = base64.b64encode(archive.getvalue()).decode("ascii")
     replacement = "BRIDGE_ZIP_B64 = (\n" + "".join(
