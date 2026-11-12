@@ -24,7 +24,7 @@ import time
 import uuid
 import zipfile
 
-SCRIPT_VERSION = "1.1.1"
+SCRIPT_VERSION = "1.2.0"
 CURA_VERSION = "5.12.0"
 PROFILE_VERSION = "5.12"
 BRIDGE_NAME = "HeadlessResliceBridge"
@@ -50,6 +50,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--config-dir", type=Path, help="コピー元のCura 5.12設定フォルダ。通常は自動検出")
     p.add_argument("--data-dir", type=Path, help="Linux用のコピー元データフォルダ")
     p.add_argument("--printer", help="Curaに保存済みの変更先プリンタ名またはID。変更先の設定一式を使用")
+    p.add_argument("--insert-before-end", type=Path, metavar="GCODE", help="指定G-codeファイルをCuraの終了G-code直前へ挿入")
     p.add_argument("--list-printers", action="store_true", help="Curaに保存済みのプリンタ名・IDを表示して終了")
     p.add_argument("--recursive", "-r", action="store_true", help="指定フォルダのサブフォルダも処理")
     p.add_argument("--overwrite", action="store_true", help="成功時に既存の同名G-codeを置換する")
@@ -78,6 +79,31 @@ def collect_inputs(paths: list[Path], recursive: bool) -> list[Path]:
     if not found:
         raise ResliceError("対象の3MFファイルがありません。")
     return sorted(found.values(), key=lambda x: str(x).casefold())
+
+
+
+def validate_insert_gcode(path: Path | None) -> Path | None:
+    """Validate an optional UTF-8/ASCII G-code snippet before Cura starts."""
+    if path is None:
+        return None
+    resolved = path.expanduser().resolve()
+    if not resolved.is_file():
+        raise ResliceError(f"挿入G-codeファイルが見つかりません: {resolved}")
+    try:
+        raw = resolved.read_bytes()
+    except OSError as exc:
+        raise ResliceError(f"挿入G-codeファイルを読めません: {resolved}: {exc}") from exc
+    if len(raw) > 1024 * 1024:
+        raise ResliceError("挿入G-codeファイルは1MiB以下にしてください。")
+    if not raw.strip():
+        raise ResliceError("挿入G-codeファイルが空です。")
+    if b"\x00" in raw:
+        raise ResliceError("挿入G-codeファイルにNUL文字が含まれています。")
+    try:
+        raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ResliceError("挿入G-codeファイルはUTF-8またはASCIIで保存してください。") from exc
+    return resolved
 
 
 def validate_project(path: Path) -> None:
@@ -400,6 +426,7 @@ def reslice_one(source: Path, cura: Path, sources: tuple[Path | None, Path | Non
         job = {
             "job_id": uuid.uuid4().hex,
             "action": "slice", "printer": args.printer,
+            "insert_before_end_path": str(args.insert_before_end) if args.insert_before_end else None,
             "input_path": str(source), "output_path": str(temp_output),
             "result_path": str(work / "result.json"),
             "timeout_seconds": args.timeout,
@@ -408,6 +435,8 @@ def reslice_one(source: Path, cura: Path, sources: tuple[Path | None, Path | Non
         emit(f"SLICE: {source}")
         if args.printer:
             emit(f"PRINTER: {args.printer}（変更先に保存された設定一式を使用）")
+        if args.insert_before_end:
+            emit(f"INSERT BEFORE END: {args.insert_before_end}")
         result = run_cura_job(job, work, log_path, cura, env, args)
         if not temp_output.is_file() or temp_output.stat().st_size == 0:
             raise ResliceError(f"出力G-codeが空です。ログ: {log_path}")
@@ -432,13 +461,15 @@ def main(argv: list[str] | None = None) -> int:
     args = arg_parser.parse_args(argv)
     if args.timeout < 10 or not args.timeout < 604800:
         arg_parser.error("--timeout は10秒以上604800秒未満で指定してください。")
-    if args.list_printers and (args.paths or args.printer):
+    if args.list_printers and (args.paths or args.printer or args.insert_before_end):
         arg_parser.error("--list-printers は入力ファイルや --printer と同時に指定できません。")
     if not args.list_printers and not args.paths:
         arg_parser.error("3MFファイルまたはフォルダを指定してください。プリンタの確認は --list-printers です。")
     if args.printer is not None and not args.printer.strip():
         arg_parser.error("--printer にプリンタ名またはIDを指定してください。")
     try:
+        if not args.list_printers:
+            args.insert_before_end = validate_insert_gcode(args.insert_before_end)
         cura = find_cura(args.cura)
         sources = profile_sources(args)
         if args.list_printers:
