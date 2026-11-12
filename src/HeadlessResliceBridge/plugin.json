@@ -1,7 +1,7 @@
 {
   "name": "Headless Reslice Bridge",
   "author": "OpenAI",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "api": 8,
   "description": "Private bridge used by the isolated Cura 5.12.0 reslice launcher."
 }
