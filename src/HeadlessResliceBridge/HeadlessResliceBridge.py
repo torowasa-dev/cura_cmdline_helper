@@ -53,6 +53,7 @@ class HeadlessResliceBridge(Extension):
         self._post_errors = []
         self._post_originals = []
         self._target = None
+        self._insert_before_end = None
         self._target_snapshot = None
         self._target_applied = False
         self._source_printer = None
@@ -72,6 +73,9 @@ class HeadlessResliceBridge(Extension):
                 self._output = Path(self._manifest["output_path"]).absolute()
                 if self._input == self._output.resolve():
                     raise ValueError("Input and output must be different files")
+                insert_path = self._manifest.get("insert_before_end_path")
+                if insert_path:
+                    self._insert_before_end = self._load_insert_gcode(Path(insert_path))
             self._timeout = float(self._manifest["timeout_seconds"])
             if self._timeout <= 0:
                 raise ValueError("timeout_seconds must be positive")
@@ -204,6 +208,31 @@ class HeadlessResliceBridge(Extension):
         preferences.setValue("info/send_engine_crash", False)
         preferences.setValue("info/send_slice_info", False)
         os.environ["USE_SENTRY"] = "0"
+
+
+    @staticmethod
+    def _load_insert_gcode(path):
+        path = path.resolve(strict=True)
+        raw = path.read_bytes()
+        if len(raw) > 1024 * 1024:
+            raise RuntimeError("Insert-before-end G-code must be 1 MiB or smaller")
+        if not raw.strip():
+            raise RuntimeError("Insert-before-end G-code is empty")
+        if b"\x00" in raw:
+            raise RuntimeError("Insert-before-end G-code contains a NUL byte")
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError("Insert-before-end G-code must be UTF-8 or ASCII") from exc
+        text = text.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n") + "\n"
+        encoded = text.encode("utf-8")
+        return {
+            "path": str(path),
+            "name": path.name,
+            "text": text,
+            "bytes": len(encoded),
+            "sha256": hashlib.sha256(encoded).hexdigest(),
+        }
 
     @staticmethod
     def _printer_info(stack):
@@ -645,6 +674,10 @@ class HeadlessResliceBridge(Extension):
             "source_printer": self._source_printer,
             "extruder_assignments": self._object_assignments,
             "target_saved_settings_sha256": self._json_hash(self._target_snapshot) if self._target_applied else None,
+            "insert_before_end": ({"name": self._insert_before_end["name"],
+                                   "bytes": self._insert_before_end["bytes"],
+                                   "sha256": self._insert_before_end["sha256"]}
+                                  if self._insert_before_end is not None else None),
         }
 
     def _on_backend_done(self, *args):
@@ -659,12 +692,34 @@ class HeadlessResliceBridge(Extension):
         if not self._done and self._phase == "slicing":
             self._fail("CuraEngine could not slice this project; see the Cura log")
 
+
+    def _inject_before_end(self, gcode):
+        if self._insert_before_end is None:
+            return
+        if not isinstance(gcode, list) or len(gcode) < 2 or not all(isinstance(chunk, str) for chunk in gcode):
+            raise RuntimeError("Unexpected Cura G-code section structure; cannot insert before end G-code safely")
+        end_index = None
+        for index in range(len(gcode) - 1, -1, -1):
+            if gcode[index].strip():
+                end_index = index
+                break
+        if end_index is None or end_index == 0:
+            raise RuntimeError("Cura end G-code section could not be identified")
+        name = self._insert_before_end["name"]
+        payload = (
+            "\n;-- cura_cmdline_helper insert-before-end: BEGIN " + name + " --\n"
+            + self._insert_before_end["text"]
+            + ";-- cura_cmdline_helper insert-before-end: END " + name + " --\n"
+        )
+        gcode[end_index] = payload + gcode[end_index]
+
     def _export(self):
         self._phase = "writing_gcode"
         scene = self._app.getController().getScene()
         gcode = getattr(scene, "gcode_dict", {}).get(self._plate)
         if not gcode or not any(line.strip() for line in gcode):
             raise RuntimeError("Slicing finished without G-code")
+        self._inject_before_end(gcode)
 
         # Standard Cura post-processing runs on writeStarted, not in GCodeWriter.
         # Emit the same manager hook before invoking the normal text writer.
