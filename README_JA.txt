@@ -1,4 +1,4 @@
-Cura 5.12.0 ヘッドレス再スライス / v1.1.1
+Cura 5.12.0 ヘッドレス再スライス / v1.2.0
 作成日: 2026-11-11
 
 ■ できること
@@ -272,3 +272,17 @@ Windows版そのもの、複数押出機間の切替、すべての機種定義�
   ・幅210mmのモデルを200mmベッドへ変更すると造形範囲外で停止
   ・上記どちらも--overwrite指定下で既存G-codeのSHA256が不変
   ・元の設定・データ全27ファイルのSHA256が処理前後で不変
+
+
+■ 終了G-code直前へ任意G-codeを挿入する（v1.2.0追加）
+
+  py -3 .\cura_reslice.py "D:\3D\grip.3mf" --insert-before-end ".\UNLOAD50.gcode" --overwrite
+
+指定したUTF-8/ASCIIのG-codeファイルを、CuraEngineが生成した最終の終了G-code
+ブロックの先頭へ挿入します。その後にCura標準の後処理とGCodeWriterを通します。
+挿入ファイルが存在しない、空、1MiB超、NUL文字を含む、UTF-8/ASCIIで読めない場合は
+エラー停止し、既存G-codeは置換しません。
+
+同梱のUNLOAD50.gcodeは、220℃へ温度を合わせ、50mm引き戻した後、
+ホットエンド停止・Eモーター解放まで行います。
+reslice_drag_drop.batではこのファイルを自動指定します。
